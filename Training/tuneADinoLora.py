@@ -190,6 +190,7 @@ STUDENT_TEMP = training_config['student_temp']
 LORA_RANK = config.get('lora_rank', 8)
 LORA_ALPHA = config.get('lora_alpha', 16)
 UNFREEZE_LAST_N_BLOCKS = config.get('unfreeze_last_n_blocks', 2)
+DROP_PATH_RATE = config.get('drop_path_rate', 0.2)
 
 # Create directories
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -204,6 +205,7 @@ print(f"\nExPLoRA Configuration:")
 print(f"  LoRA rank: {LORA_RANK}")
 print(f"  LoRA alpha: {LORA_ALPHA}")
 print(f"  Unfrozen blocks: {UNFREEZE_LAST_N_BLOCKS}")
+print(f"  Drop-path rate: {DROP_PATH_RATE} (stochastic depth regularization)")
 print(f"\nMULTI-CROP SETUP:")
 print(f"  Global crops: 2 @ {GLOBAL_CROP_SIZE}x{GLOBAL_CROP_SIZE}")
 print(f"  Local crops: {N_LOCAL_CROPS} @ {LOCAL_CROP_SIZE}x{LOCAL_CROP_SIZE}")
@@ -351,18 +353,20 @@ def create_explora_models(
     pred_dim=4096,
     lora_rank=8,
     lora_alpha=16,
-    unfreeze_last_n_blocks=2
+    unfreeze_last_n_blocks=2,
+    drop_path_rate=0.2
 ):
     """Create ExPLoRA models with LoRA adaptation"""
     import timm
     
-    # Create student
+    # Create student with drop-path (stochastic depth)
     student = timm.create_model(
         'vit_large_patch16_384',
         pretrained=False,
         num_classes=0,
         img_size=img_size,
-        dynamic_img_size=True
+        dynamic_img_size=True,
+        drop_path_rate=drop_path_rate  # ExPLoRA: 0.2 drop-path, no dropout
     )
     
     # Load pretrained weights
@@ -384,13 +388,14 @@ def create_explora_models(
         unfreeze_last_n_blocks=unfreeze_last_n_blocks
     )
     
-    # Create teacher (copy from student)
+    # Create teacher (no drop-path - teacher should be stable)
     teacher = timm.create_model(
         'vit_large_patch16_384',
         pretrained=False,
         num_classes=0,
         img_size=img_size,
-        dynamic_img_size=True
+        dynamic_img_size=True,
+        drop_path_rate=0.0  # Teacher uses no drop-path for stability
     )
     
     if checkpoint_data is not None:
@@ -406,6 +411,10 @@ def create_explora_models(
     teacher.eval()
     for p in teacher.parameters():
         p.requires_grad = False
+    
+    print(f"  Base size: {img_size}×{img_size}")
+    print(f"  Can process: 96×96 local crops AND {img_size}×{img_size} global crops")
+    print(f"  Drop-path: Student={drop_path_rate}, Teacher=0.0")
     
     # Create projection heads
     projection_student = nn.Sequential(
@@ -537,7 +546,8 @@ student, teacher, projection_student, projection_teacher, predictor, lora_params
     pred_dim=4096,
     lora_rank=LORA_RANK,
     lora_alpha=LORA_ALPHA,
-    unfreeze_last_n_blocks=UNFREEZE_LAST_N_BLOCKS
+    unfreeze_last_n_blocks=UNFREEZE_LAST_N_BLOCKS,
+    drop_path_rate=DROP_PATH_RATE
 )
 
 # Multi-GPU
