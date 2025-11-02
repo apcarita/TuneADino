@@ -40,11 +40,23 @@ class TrainingConfig:
 
 def load_config(config_path='config.json'):
     """Load and validate configuration"""
-    if not Path(config_path).exists():
+    config_file = Path(config_path)
+    
+    # If not found, try relative to this script's directory
+    if not config_file.exists():
+        script_dir = Path(__file__).parent
+        config_file = script_dir / config_path
+    
+    if not config_file.exists():
         print(f"ERROR: Config file not found: {config_path}")
+        print(f"Tried: {Path(config_path).absolute()}")
+        print(f"Tried: {config_file.absolute()}")
+        print(f"\nPlease run from the Training directory:")
+        print(f"  cd {Path(__file__).parent}")
+        print(f"  python train.py")
         sys.exit(1)
     
-    with open(config_path, 'r') as f:
+    with open(config_file, 'r') as f:
         data = json.load(f)
     
     # Extract paths
