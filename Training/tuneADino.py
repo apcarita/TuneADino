@@ -320,7 +320,7 @@ if torch.cuda.device_count() > 1:
     projection_teacher = nn.DataParallel(projection_teacher)
     predictor = nn.DataParallel(predictor)
 
-print(f"\nModels ready! GPU Memory: {get_memory_usage():.2f}GB")
+print(f"\nModels ready!")
 
 dino_loss = DINOLossWithCentering(
     out_dim=1024,

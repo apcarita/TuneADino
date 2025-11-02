@@ -1,3 +1,7 @@
 Datasets/*
 *.sh
 .*
+venv/
+output/
+*.pth
+config.json
