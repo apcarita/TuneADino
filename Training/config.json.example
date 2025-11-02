@@ -7,6 +7,9 @@
     "pretrained_model": "dinov3_vitl16_pretrain_lvd1689m-8aa4cbdd.pth",
     "output_dir": "output/ssl_dinov3_multicrop",
     "checkpoint_dir": "/path/to/checkpoints/ssl_dinov3_multicrop",
+    "lora_rank": 8,
+    "lora_alpha": 16,
+    "unfreeze_last_n_blocks": 2,
     "training": {
       "batch_size": 48,
       "global_crop_size": 512,
