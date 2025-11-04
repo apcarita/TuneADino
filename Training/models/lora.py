@@ -49,6 +49,10 @@ def apply_lora_to_vit(model, rank=8, alpha=16, unfreeze_last_n_blocks=2):
         qkv_lora = LoRALayer(attn.qkv.in_features, attn.qkv.out_features, rank, alpha)
         proj_lora = LoRALayer(attn.proj.in_features, attn.proj.out_features, rank, alpha)
         
+        # Register LoRA layers as submodules so DataParallel handles them
+        attn.add_module(f'qkv_lora', qkv_lora)
+        attn.add_module(f'proj_lora', proj_lora)
+        
         # Save original forward methods
         qkv_orig_forward = attn.qkv.forward
         proj_orig_forward = attn.proj.forward
@@ -63,9 +67,6 @@ def apply_lora_to_vit(model, rank=8, alpha=16, unfreeze_last_n_blocks=2):
         
         lora_params.extend([qkv_lora.lora_A, qkv_lora.lora_B])
         lora_params.extend([proj_lora.lora_A, proj_lora.lora_B])
-        
-        block.qkv_lora = qkv_lora
-        block.proj_lora = proj_lora
     
     # Unfreeze last N blocks
     for block_idx in range(freeze_until, n_blocks):
