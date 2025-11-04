@@ -49,13 +49,17 @@ def apply_lora_to_vit(model, rank=8, alpha=16, unfreeze_last_n_blocks=2):
         qkv_lora = LoRALayer(attn.qkv.in_features, attn.qkv.out_features, rank, alpha)
         proj_lora = LoRALayer(attn.proj.in_features, attn.proj.out_features, rank, alpha)
         
-        def make_lora_forward(orig_layer, lora_layer):
+        # Save original forward methods
+        qkv_orig_forward = attn.qkv.forward
+        proj_orig_forward = attn.proj.forward
+        
+        def make_lora_forward(orig_forward, lora_layer):
             def forward(x):
-                return lora_layer(x, orig_layer(x))
+                return lora_layer(x, orig_forward(x))
             return forward
         
-        attn.qkv.forward = make_lora_forward(attn.qkv, qkv_lora)
-        attn.proj.forward = make_lora_forward(attn.proj, proj_lora)
+        attn.qkv.forward = make_lora_forward(qkv_orig_forward, qkv_lora)
+        attn.proj.forward = make_lora_forward(proj_orig_forward, proj_lora)
         
         lora_params.extend([qkv_lora.lora_A, qkv_lora.lora_B])
         lora_params.extend([proj_lora.lora_A, proj_lora.lora_B])

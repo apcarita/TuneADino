@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import time
@@ -153,7 +153,7 @@ class ExPLoRATrainer:
             T_max=self.cfg.total_epochs
         )
         
-        self.scaler = GradScaler(enabled=self.cfg.use_mixed_precision)
+        self.scaler = GradScaler('cuda', enabled=self.cfg.use_mixed_precision)
         
         if self.checkpoint_data:
             self.optimizer.load_state_dict(self.checkpoint_data['optimizer'])
@@ -296,7 +296,7 @@ class ExPLoRATrainer:
             for p in self.head_s.parameters():
                 p.requires_grad = True
         
-        with autocast(enabled=self.cfg.use_mixed_precision):
+        with autocast('cuda', enabled=self.cfg.use_mixed_precision):
             # Student forward on all crops
             student_outputs = []
             for crop in all_crops:
