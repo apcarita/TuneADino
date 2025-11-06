@@ -2,24 +2,38 @@ import torch
 import torch.nn as nn
 
 
-class LoRALayer(nn.Module):
-    """Low-Rank Adaptation layer: W + (B @ A) * scaling"""
+class LoRALinear(nn.Module):
+    """
+    Linear layer with LoRA adaptation: y = Wx + (B @ A @ x) * scaling
+    Wraps the original linear layer for proper DataParallel support
+    """
     
-    def __init__(self, in_features, out_features, rank=8, alpha=16):
+    def __init__(self, original_linear, rank=8, alpha=16):
         super().__init__()
+        self.original_linear = original_linear
         self.rank = rank
         self.alpha = alpha
         self.scaling = alpha / rank
+        
+        in_features = original_linear.in_features
+        out_features = original_linear.out_features
         
         self.lora_A = nn.Parameter(torch.zeros(rank, in_features))
         self.lora_B = nn.Parameter(torch.zeros(out_features, rank))
         
         nn.init.kaiming_uniform_(self.lora_A, a=1)
         nn.init.zeros_(self.lora_B)
+        
+        # Freeze original weights
+        for param in self.original_linear.parameters():
+            param.requires_grad = False
     
-    def forward(self, x, original_output):
+    def forward(self, x):
+        # Original linear transformation
+        result = self.original_linear(x)
+        # Add LoRA adaptation
         lora_out = (x @ self.lora_A.T @ self.lora_B.T) * self.scaling
-        return original_output + lora_out
+        return result + lora_out
 
 
 def apply_lora_to_vit(model, rank=8, alpha=16, unfreeze_last_n_blocks=2):
@@ -46,24 +60,12 @@ def apply_lora_to_vit(model, rank=8, alpha=16, unfreeze_last_n_blocks=2):
         block = model.blocks[block_idx]
         attn = block.attn
         
-        qkv_lora = LoRALayer(attn.qkv.in_features, attn.qkv.out_features, rank, alpha)
-        proj_lora = LoRALayer(attn.proj.in_features, attn.proj.out_features, rank, alpha)
+        # Replace qkv and proj with LoRA wrappers
+        qkv_lora = LoRALinear(attn.qkv, rank, alpha)
+        proj_lora = LoRALinear(attn.proj, rank, alpha)
         
-        # Register LoRA layers as submodules so DataParallel handles them
-        attn.add_module(f'qkv_lora', qkv_lora)
-        attn.add_module(f'proj_lora', proj_lora)
-        
-        # Save original forward methods
-        qkv_orig_forward = attn.qkv.forward
-        proj_orig_forward = attn.proj.forward
-        
-        def make_lora_forward(orig_forward, lora_layer):
-            def forward(x):
-                return lora_layer(x, orig_forward(x))
-            return forward
-        
-        attn.qkv.forward = make_lora_forward(qkv_orig_forward, qkv_lora)
-        attn.proj.forward = make_lora_forward(proj_orig_forward, proj_lora)
+        attn.qkv = qkv_lora
+        attn.proj = proj_lora
         
         lora_params.extend([qkv_lora.lora_A, qkv_lora.lora_B])
         lora_params.extend([proj_lora.lora_A, proj_lora.lora_B])
