@@ -15,6 +15,7 @@ def create_explora_models(
     lora_alpha=16,
     unfreeze_last_n_blocks=2,
     drop_path_rate=0.2,
+    gradient_checkpointing=False,
     bottleneck_dim=256,
     hidden_dim=2048,
     out_dim=65536
@@ -31,24 +32,43 @@ def create_explora_models(
         drop_path_rate=drop_path_rate
     )
     
-    # Load pretrained weights
-    if checkpoint_data is not None:
-        student.load_state_dict(checkpoint_data['student'], strict=False)
-        print("Loaded student from checkpoint")
-    elif pretrained_path and Path(pretrained_path).exists():
+    # Load pretrained weights (DINOv3) if starting fresh
+    if checkpoint_data is None and pretrained_path and Path(pretrained_path).exists():
         checkpoint = torch.load(pretrained_path, map_location='cpu')
-        student.load_state_dict(checkpoint, strict=False)
+        # Handle DINOv3 checkpoint format (may be wrapped)
+        if isinstance(checkpoint, dict):
+            # Try common keys: 'model', 'state_dict', or direct state_dict
+            if 'model' in checkpoint:
+                state_dict = checkpoint['model']
+            elif 'state_dict' in checkpoint:
+                state_dict = checkpoint['state_dict']
+            else:
+                # Assume it's the state_dict itself
+                state_dict = checkpoint
+        else:
+            state_dict = checkpoint
+        student.load_state_dict(state_dict, strict=False)
         print(f"Loaded pretrained weights from {pretrained_path}")
         del checkpoint
         torch.cuda.empty_cache()
     
-    # Apply LoRA
+    # Apply LoRA to student (must be done before loading checkpoint that contains LoRA)
     student, lora_params = apply_lora_to_vit(
         student, rank=lora_rank, alpha=lora_alpha, 
         unfreeze_last_n_blocks=unfreeze_last_n_blocks
     )
     
-    # Teacher (no drop-path for stability)
+    # Enable gradient checkpointing if requested (saves memory at cost of compute)
+    if gradient_checkpointing:
+        student.set_grad_checkpointing(enable=True)
+        print("Enabled gradient checkpointing for memory efficiency")
+    
+    # Load student from checkpoint if resuming (checkpoint contains LoRA params)
+    if checkpoint_data is not None:
+        student.load_state_dict(checkpoint_data['student'], strict=False)
+        print("Loaded student from checkpoint")
+    
+    # Teacher (no drop-path for stability) - MUST have same LoRA architecture as student
     teacher = timm.create_model(
         'vit_large_patch16_224',
         pretrained=False,
@@ -58,6 +78,17 @@ def create_explora_models(
         drop_path_rate=0.0
     )
     
+    # Apply LoRA to teacher (same architecture as student)
+    teacher, _ = apply_lora_to_vit(
+        teacher, rank=lora_rank, alpha=lora_alpha,
+        unfreeze_last_n_blocks=unfreeze_last_n_blocks
+    )
+    
+    # Teacher doesn't need gradient checkpointing (no gradients computed)
+    if gradient_checkpointing:
+        teacher.set_grad_checkpointing(enable=False)
+    
+    # Load teacher weights
     if checkpoint_data is not None:
         teacher.load_state_dict(checkpoint_data['teacher'], strict=False)
         print("Loaded teacher from checkpoint")

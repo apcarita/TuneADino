@@ -31,11 +31,12 @@ class ExPLoRATrainer:
         # Print info
         print_system_info(config.batch_size, config.use_mixed_precision)
         print(f"\nExPLoRA Configuration:")
-        print(f"  Resolution: {config.global_crop_size}x{config.global_crop_size} (global)")
-        print(f"  Local crops: {config.n_local_crops} @ {config.local_crop_size}x{config.local_crop_size}")
-        print(f"  Learning rate: {config.learning_rate:.2e} (no weight decay)")
+        print(f"  Resolution: {config.global_crop_size}x{config.global_crop_size} (global), {config.local_crop_size}x{config.local_crop_size} (local x{config.n_local_crops})")
+        print(f"  Patches: {(config.global_crop_size // 16) ** 2} (sequence length)")
+        print(f"  Learning rate: {config.learning_rate:.2e} (weight decay={config.weight_decay})")
         print(f"  LoRA: rank={config.lora_rank}, alpha={config.lora_alpha}")
         print(f"  Unfrozen blocks: {config.unfreeze_last_n_blocks}")
+        print(f"  Gradient checkpointing: {config.gradient_checkpointing}")
         print(f"  Koleo weight: {config.koleo_weight}")
         print(f"  iBOT weight: {config.ibot_weight}")
         print(f"  Head frozen: first {config.head_frozen_iters} iters\n")
@@ -99,7 +100,8 @@ class ExPLoRATrainer:
                 lora_rank=self.cfg.lora_rank,
                 lora_alpha=self.cfg.lora_alpha,
                 unfreeze_last_n_blocks=self.cfg.unfreeze_last_n_blocks,
-                drop_path_rate=self.cfg.drop_path_rate
+                drop_path_rate=self.cfg.drop_path_rate,
+                gradient_checkpointing=self.cfg.gradient_checkpointing
             )
         
         # Multi-GPU

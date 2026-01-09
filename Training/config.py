@@ -26,6 +26,7 @@ class TrainingConfig:
     
     use_mixed_precision: bool
     head_frozen_iters: int
+    gradient_checkpointing: bool
     
     lora_rank: int
     lora_alpha: int
@@ -88,6 +89,7 @@ def load_config(config_path='config.json'):
         
         use_mixed_precision=t['use_mixed_precision'],
         head_frozen_iters=t.get('head_frozen_iters', 3000),
+        gradient_checkpointing=t.get('gradient_checkpointing', False),
         
         lora_rank=data['lora_rank'],
         lora_alpha=data['lora_alpha'],
